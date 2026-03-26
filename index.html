@@ -2,7 +2,7 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <title>AI PDF Stamp - Dynamic Filename & Currency Fix</title>
+    <title>AI PDF Stamp</title>
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
@@ -10,33 +10,38 @@
         header { background: #111; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #444; }
         .main-container { display: flex; flex: 1; overflow: hidden; padding: 10px; gap: 10px; }
         .preview-pane { flex: 2; background: #333; border: 3px dashed #666; border-radius: 12px; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 20px; position: relative; }
-        .preview-pane.drag-over { border-color: #28a745; background: #3a3a3a; }
+        .preview-pane.drag-over { border-color: #28a745; background: #444; }
         #canvas-wrapper { position: relative; background: white; box-shadow: 0 0 30px rgba(0,0,0,0.5); display: none; }
         canvas { cursor: move; }
-        .editor-pane { flex: 0 0 360px; background: white; color: #333; padding: 20px; border-radius: 8px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-        .input-group { display: flex; flex-direction: column; gap: 4px; }
-        label { font-size: 12px; font-weight: bold; color: #666; }
-        input { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
-        .btn-dl { background: #28a745; color: white; padding: 15px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 16px; }
+        .editor-pane { flex: 0 0 360px; background: white; color: #333; padding: 20px; border-radius: 8px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+        .input-group { display: flex; flex-direction: column; gap: 2px; }
+        label { font-size: 11px; font-weight: bold; color: #888; text-transform: uppercase; }
+        input, select, textarea { padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        textarea { resize: vertical; min-height: 60px; }
+        input:focus, select:focus, textarea:focus { border-color: #007bff; outline: none; }
+        .btn-dl { background: #28a745; color: white; padding: 15px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 5px; font-size: 16px; }
+        .btn-dl:hover { background: #218838; }
         .page-ctrl { margin-bottom: 10px; display: none; gap: 15px; align-items: center; }
-        .status { color: #007bff; font-weight: bold; font-size: 13px; }
+        .status { color: #007bff; font-weight: bold; font-size: 13px; margin: 2px 0; }
     </style>
 </head>
 <body>
 
 <header>
-    <div style="font-weight: bold;">AI PDF 蓋章工具</div>
-    <button onclick="document.getElementById('pdf-input').click()" style="padding: 8px 15px; cursor: pointer;">選擇 PDF</button>
-    <input type="file" id="pdf-input" accept="application/pdf" style="display:none">
+    <div style="font-weight: bold; font-size: 1.2em;">AI PDF Stamp</div>
+    <div style="display: flex; gap: 10px;">
+        <button onclick="document.getElementById('pdf-input').click()" style="padding: 8px 15px; cursor: pointer; border-radius: 4px; border: 1px solid #666; background: #444; color: white;">Select PDF</button>
+        <input type="file" id="pdf-input" accept="application/pdf" style="display:none">
+    </div>
 </header>
 
 <div class="main-container">
     <div class="preview-pane" id="drop-zone">
-        <div id="drop-hint" style="color:#888; position:absolute; top:50%;">拖放 PDF 到此處</div>
+        <div id="drop-hint" style="color:#888; position:absolute; top:50%; pointer-events: none;">Drag PDF to here</div>
         <div class="page-ctrl" id="nav">
-            <button onclick="changePage(-1)">PREV</button>
-            <span id="page-info" style="color: white;">1 / 1</span>
-            <button onclick="changePage(1)">NEXT</button>
+            <button onclick="changePage(-1)">Previous</button>
+            <span id="page-info" style="color: white; font-weight: bold;">1 / 1</span>
+            <button onclick="changePage(1)">Next</button>
         </div>
         <div id="canvas-wrapper">
             <canvas id="pdf-canvas"></canvas>
@@ -44,17 +49,27 @@
     </div>
 
     <div class="editor-pane">
-        <h3 style="margin: 0;">印章內容</h3>
-        <p id="ocr-info" class="status">等待檔案...</p>
-        
+        <p id="ocr-info" class="status">Waiting...</p>
         <div class="input-group"><label>Date</label><input type="text" id="v-date"></div>
         <div class="input-group"><label>Account code</label><input type="text" id="v-code"></div>
         <div class="input-group"><label>Amount</label><input type="text" id="v-amount"></div>
         <div class="input-group"><label>Cheque #</label><input type="text" id="v-cheque"></div>
         <div class="input-group"><label>Reviewed by</label><input type="text" id="v-review"></div>
         <div class="input-group"><label>Approved by</label><input type="text" id="v-approve"></div>
+        <div class="input-group">
+            <label>Type</label>
+            <select id="v-type">
+                <option value=""></option>
+                <option value="Whole WK">Whole WK</option>
+                <option value="Whole GV">Whole GV</option>
+                <option value="GV LTC">GV LTC</option>
+                <option value="GV SL">GV SL</option>
+                <option value="CH">CH</option>
+            </select>
+        </div>
+        <div class="input-group"><label>Remarks</label><textarea id="v-remarks"></textarea></div>
 
-        <button class="btn-dl" onclick="generatePDF()">儲存並下載 PDF</button>
+        <button class="btn-dl" onclick="generatePDF()">Save and Download PDF</button>
     </div>
 </div>
 
@@ -65,86 +80,137 @@
     const canvas = document.getElementById('pdf-canvas');
     const ctx = canvas.getContext('2d');
     const dropZone = document.getElementById('drop-zone');
-    const amtInp = document.getElementById('v-amount');
-    
+    const offscreenCanvas = document.createElement('canvas');
+    const offCtx = offscreenCanvas.getContext('2d');
+
     let rawBuffer = null, pdfProxy = null;
     let curP = 1, totalP = 1;
-    let originalFileName = "document.pdf"; // 儲存檔名用
-    let stamp = { x: 50, y: 50, w: 250, h: 140 }, drag = { is: false, ox: 0, oy: 0 };
+    let originalFileName = "document.pdf";
 
-    // 初始化日期
-    const d = new Date();
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    document.getElementById('v-date').value = `${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
+    const tableH = 140;
+    const padding = 25;
+    let stamp = { x: 50, y: 50, w: 250, h: tableH + padding * 2 }, drag = { is: false, ox: 0, oy: 0 };
 
-    // 金額自動加 $ 邏輯
-    function formatAmount(val) {
-        if (!val) return "";
-        let clean = val.replace(/[^\d.,]/g, '');
-        return clean ? '$' + clean : "";
-    }
+    const tableLabels = ["Date", "Account code", "Amount", "Cheque #", "Reviewed by", "Approved by"];
+    const tableIds = ["v-date", "v-code", "v-amount", "v-cheque", "v-review", "v-approve"];
+    const allIds = ["v-date", "v-type", "v-code", "v-amount", "v-cheque", "v-review", "v-approve", "v-remarks"];
 
-    amtInp.oninput = function() {
-        this.value = formatAmount(this.value);
-        render();
+    window.onload = () => {
+        const d = new Date();
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        document.getElementById('v-date').value = `${months[d.getMonth()]} ${d.getDate()} ${d.getFullYear()}`;
+        if(localStorage.getItem('pdf_type')) document.getElementById('v-type').value = localStorage.getItem('pdf_type');
+        if(localStorage.getItem('pdf_reviewer')) document.getElementById('v-review').value = localStorage.getItem('pdf_reviewer');
+        if(localStorage.getItem('pdf_approver')) document.getElementById('v-approve').value = localStorage.getItem('pdf_approver');
     };
 
-    // 拖放與選擇檔案
-    const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, prevent));
-    
+    document.getElementById('v-type').onchange = e => { localStorage.setItem('pdf_type', e.target.value); draw(); };
+    document.getElementById('v-review').onblur = e => localStorage.setItem('pdf_reviewer', e.target.value);
+    document.getElementById('v-approve').onblur = e => localStorage.setItem('pdf_approver', e.target.value);
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('drag-over'); });
     dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
         if (file && file.type === "application/pdf") handleFile(file);
     });
     document.getElementById('pdf-input').onchange = e => { if (e.target.files[0]) handleFile(e.target.files[0]); };
 
     async function handleFile(file) {
-        originalFileName = file.name; // 記住原始檔名
+        originalFileName = file.name;
         document.getElementById('ocr-info').innerText = "讀取中...";
-        const reader = new FileReader();
-        reader.onload = async function() {
-            rawBuffer = this.result.slice(0);
-            pdfProxy = await pdfjsLib.getDocument({ data: this.result }).promise;
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            rawBuffer = arrayBuffer.slice(0);
+            pdfProxy = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             totalP = pdfProxy.numPages;
             document.getElementById('nav').style.display = 'flex';
             document.getElementById('drop-hint').style.display = 'none';
             document.getElementById('canvas-wrapper').style.display = 'block';
             curP = 1;
-            await render();
+            await renderPDFPage(); 
             scanAmount();
-        };
-        reader.readAsArrayBuffer(file);
+        } catch (err) { alert("無法載入 PDF"); }
     }
 
-    async function render() {
+    async function renderPDFPage() {
         const page = await pdfProxy.getPage(curP);
         const viewport = page.getViewport({ scale: 1.5 });
-        canvas.width = viewport.width; canvas.height = viewport.height;
-        await page.render({ canvasContext: ctx, viewport }).promise;
-        drawOverlay();
+        canvas.width = offscreenCanvas.width = viewport.width;
+        canvas.height = offscreenCanvas.height = viewport.height;
+        await page.render({ canvasContext: offCtx, viewport }).promise;
+        draw(); 
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(offscreenCanvas, 0, 0);
+        
+        ctx.save();
+        ctx.translate(stamp.x, stamp.y);
+        
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.fillRect(0, 0, stamp.w, stamp.h);
+        
+        const tableY = padding;
+        ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+        ctx.strokeRect(0, tableY, stamp.w, tableH);
+        
+        const rowH = tableH / 6;
+        for(let i=1; i < 6; i++) {
+            let y = tableY + rowH * i;
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(stamp.w, y); ctx.stroke();
+        }
+        ctx.beginPath(); ctx.moveTo(stamp.w*0.38, tableY); ctx.lineTo(stamp.w*0.38, tableY + tableH); ctx.stroke();
+
+        ctx.fillStyle = "black"; ctx.font = "bold 12px Arial";
+        tableLabels.forEach((l, i) => ctx.fillText(l, 5, tableY + (rowH * i) + (rowH * 0.65)));
+        
+        ctx.fillStyle = "blue"; ctx.font = "bold 15px Arial";
+        tableIds.forEach((id, i) => {
+            const val = document.getElementById(id).value;
+            ctx.fillText(val, stamp.w*0.4, tableY + (rowH * i) + (rowH * 0.7));
+        });
+
+        const typeVal = document.getElementById('v-type').value;
+        ctx.fillStyle = "black"; ctx.font = "bold 16px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(typeVal, stamp.w / 2, padding - 7);
+        ctx.textAlign = "left";
+
+        const remarksVal = document.getElementById('v-remarks').value;
+        if(remarksVal) {
+            ctx.fillStyle = "black"; ctx.font = "bold 13px Arial"; 
+            ctx.fillText(remarksVal, 5, padding + tableH + padding - 5);
+        }
+        
+        ctx.restore();
         document.getElementById('page-info').innerText = `${curP} / ${totalP}`;
     }
 
-    function drawOverlay() {
-        ctx.save();
-        ctx.translate(stamp.x, stamp.y);
-        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.fillRect(0, 0, stamp.w, stamp.h);
-        ctx.strokeStyle = "black"; ctx.lineWidth = 2;
-        ctx.strokeRect(0, 0, stamp.w, stamp.h);
-        for(let i=1; i<6; i++) {
-            let y = (stamp.h/6)*i;
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(stamp.w, y); ctx.stroke();
+    canvas.onmousedown = e => {
+        const r = canvas.getBoundingClientRect();
+        const scale = canvas.width / r.width;
+        const x = (e.clientX - r.left) * scale;
+        const y = (e.clientY - r.top) * scale;
+        if(x > stamp.x && x < stamp.x + stamp.w && y > stamp.y && y < stamp.y + stamp.h) {
+            drag.is = true; drag.ox = x - stamp.x; drag.oy = y - stamp.y;
         }
-        ctx.beginPath(); ctx.moveTo(stamp.w*0.38, 0); ctx.lineTo(stamp.w*0.38, stamp.h); ctx.stroke();
-        ctx.fillStyle = "black"; ctx.font = "bold 12px Arial";
-        ["Date","Account code","Amount","Cheque #","Reviewed by","Approved by"].forEach((l, i) => ctx.fillText(l, 5, (stamp.h/6)*i + 16));
-        ctx.fillStyle = "blue"; ctx.font = "bold 15px Arial";
-        ["v-date","v-code","v-amount","v-cheque","v-review","v-approve"].forEach((id, i) => {
-            ctx.fillText(document.getElementById(id).value, stamp.w*0.4, (stamp.h/6)*i + 17);
-        });
-        ctx.restore();
+    };
+    window.onmousemove = e => {
+        if(!drag.is) return;
+        const r = canvas.getBoundingClientRect();
+        const scale = canvas.width / r.width;
+        stamp.x = (e.clientX - r.left) * scale - drag.ox;
+        stamp.y = (e.clientY - r.top) * scale - drag.oy;
+        requestAnimationFrame(draw);
+    };
+    window.onmouseup = () => drag.is = false;
+    document.querySelectorAll('input, select, textarea').forEach(i => i.oninput = draw);
+    async function changePage(d) { 
+        if(curP+d >= 1 && curP+d <= totalP) { curP += d; await renderPDFPage(); } 
     }
 
     async function scanAmount() {
@@ -157,69 +223,69 @@
         }
         const m = fullText.match(/TOTAL[:\s]*\$?\s?(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2}))/i);
         if (m) {
-            amtInp.value = formatAmount(m[1]); // 自動加 $
+            document.getElementById('v-amount').value = '$' + m[1].replace(/[^\d.,]/g, '');
             document.getElementById('ocr-info').innerText = "已擷取金額";
-        }
-        render();
+            draw();
+        } else { document.getElementById('ocr-info').innerText = "未偵測到金額"; }
     }
-
-    // 拖拽
-    canvas.onmousedown = e => {
-        const r = canvas.getBoundingClientRect();
-        const x = (e.clientX - r.left) * (canvas.width/r.width);
-        const y = (e.clientY - r.top) * (canvas.height/r.height);
-        if(x > stamp.x && x < stamp.x + stamp.w && y > stamp.y && y < stamp.y + stamp.h) {
-            drag.is = true; drag.ox = x - stamp.x; drag.oy = y - stamp.y;
-        }
-    };
-    window.onmousemove = e => {
-        if(!drag.is) return;
-        const r = canvas.getBoundingClientRect();
-        stamp.x = (e.clientX - r.left) * (canvas.width/r.width) - drag.ox;
-        stamp.y = (e.clientY - r.top) * (canvas.height/r.height) - drag.oy;
-        render();
-    };
-    window.onmouseup = () => drag.is = false;
-    document.querySelectorAll('input').forEach(i => i.oninput = render);
-
-    async function changePage(d) { if(curP+d >= 1 && curP+d <= totalP) { curP+=d; await render(); } }
 
     async function generatePDF() {
         if(!rawBuffer) return;
-        const doc = await PDFDocument.load(rawBuffer.slice(0));
+        const doc = await PDFDocument.load(rawBuffer);
         const p = doc.getPages()[curP - 1];
         const { width, height } = p.getSize();
         const sx = width / canvas.width, sy = height / canvas.height;
+        
         const rw = stamp.w * sx, rh = stamp.h * sy;
         const rx = stamp.x * sx, ry = height - (stamp.y * sy) - rh;
 
-        p.drawRectangle({ x: rx, y: ry, width: rw, height: rh, color: rgb(1,1,1), borderColor: rgb(0,0,0), borderWidth: 1.5 });
-        for(let i=1; i<6; i++) {
-            const ly = ry + (rh/6)*i;
+        const rTableH = tableH * sy;
+        const rPadding = padding * sy;
+        const rRowH = rTableH / 6;
+
+        const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+
+        p.drawRectangle({ x: rx, y: ry, width: rw, height: rh, color: rgb(1,1,1) });
+
+        const rTableY = ry + rPadding;
+        p.drawRectangle({ x: rx, y: rTableY, width: rw, height: rTableH, borderColor: rgb(0,0,0), borderWidth: 1.5 });
+        
+        for(let i=1; i < 6; i++) {
+            const ly = rTableY + rRowH * i;
             p.drawLine({ start:{x:rx, y:ly}, end:{x:rx+rw, y:ly}, color:rgb(0,0,0), thickness:1 });
         }
-        p.drawLine({ start:{x:rx+rw*0.38, y:ry}, end:{x:rx+rw*0.38, y:ry+rh}, color:rgb(0,0,0), thickness:1 });
+        p.drawLine({ start:{x:rx+rw*0.38, y:rTableY}, end:{x:rx+rw*0.38, y:rTableY+rTableH}, color:rgb(0,0,0), thickness:1 });
 
-        const font = await doc.embedFont(StandardFonts.HelveticaBold);
-        const labels = ["Date","Account code","Amount","Cheque #","Reviewed by","Approved by"];
-        const ids = ["v-date","v-code","v-amount","v-cheque","v-review","v-approve"];
+        for(let i=0; i < 6; i++) {
+            const rowMidY = rTableY + rTableH - ((i+1) * rRowH) + (rRowH * 0.28);
+            p.drawText(tableLabels[i], { x: rx + 4, y: rowMidY, size: 12 * sy, font: fontBold, color: rgb(0,0,0) });
+            const val = document.getElementById(tableIds[i]).value;
+            if(val) p.drawText(val, { x: rx + rw*0.4, y: rowMidY, size: 12 * sy, font: fontBold, color: rgb(0,0,1) });
+        }
 
-        for(let i=0; i<6; i++) {
-            const rowMidY = ry + rh - ((i+1)*(rh/6)) + (rh/28);
-            p.drawText(labels[i], { x: rx + 4, y: rowMidY, size: 9 * sy, font, color: rgb(0,0,0) });
-            const val = document.getElementById(ids[i]).value;
-            if(val) p.drawText(val, { x: rx + rw*0.4, y: rowMidY, size: 11 * sy, font, color: rgb(0,0,1) });
+        const typeVal = document.getElementById('v-type').value;
+        const typeFontSize = 12 * sy;
+        const typeWidth = fontBold.widthOfTextAtSize(typeVal, typeFontSize);
+        p.drawText(typeVal, { 
+            x: rx + (rw - typeWidth) / 2,
+            y: ry + rh - rPadding + 5,
+            size: typeFontSize, font: fontBold, color: rgb(0,0,0) 
+        });
+
+        const remarksVal = document.getElementById('v-remarks').value;
+        if(remarksVal) {
+            p.drawText(remarksVal, { 
+                x: rx + 4,
+                y: ry + 5,
+                size: 10 * sy, font: fontBold, color: rgb(0,0,0) 
+            });
         }
 
         const b = await doc.save();
         const blob = new Blob([b], { type: 'application/pdf' });
         const link = document.createElement('a');
-        
-        // --- 檔名更換邏輯 ---
-        let finalName = originalFileName.replace(/\.pdf$/i, '') + "_verified.pdf";
-        
         link.href = URL.createObjectURL(blob);
-        link.download = finalName;
+        link.download = originalFileName.replace(/\.pdf$/i, '') + "_verified.pdf";
         link.click();
     }
 </script>
