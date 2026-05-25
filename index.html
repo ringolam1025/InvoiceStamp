@@ -387,12 +387,18 @@
             if (!rawBuffer) return;
             const doc = await PDFDocument.load(rawBuffer);
             const p = doc.getPages()[curP - 1];
+
+            const rotationAngle = p.getRotation().angle;
             const { width, height } = p.getSize();
 
-            const sx = width / canvas.width;
-            const sy = height / canvas.height;
-            const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
+            const isPixelRotated = rotationAngle === 90 || rotationAngle === 270;
+            const pdfW = isPixelRotated ? height : width;
+            const pdfH = isPixelRotated ? width : height;
 
+            const sx = pdfW / canvas.width;
+            const sy = pdfH / canvas.height;
+
+            const fontBold = await doc.embedFont(StandardFonts.HelveticaBold);
             const remVal = document.getElementById('v-remarks').value;
             const remFontSize = 12 * sy;
             const maxRemWidth = (stamp.w - 10) * sx;
@@ -424,9 +430,25 @@
             const rBottomArea = remLines.length > 0 ? (15 * sy) + (remLines.length * rLineHeight) : (10 * sy);
             const dynamicRh = rTableH + rPadding + rBottomArea;
 
+            // const rw = stamp.w * sx;
+            // const rx = stamp.x * sx;
+            // const ry = height - (stamp.y * sy) - dynamicRh;
             const rw = stamp.w * sx;
+            const rh = dynamicRh; 
             const rx = stamp.x * sx;
-            const ry = height - (stamp.y * sy) - dynamicRh;
+            const ry = pdfH - (stamp.y * sy) - rh;
+
+            p.pushOperators(PDFLib.pushGraphicsState());
+            if (rotationAngle === 90) {
+                p.pushOperators(PDFLib.translate(width, 0));
+                p.pushOperators(PDFLib.rotateDegrees(90));
+            } else if (rotationAngle === 180) {
+                p.pushOperators(PDFLib.translate(width, height));
+                p.pushOperators(PDFLib.rotateDegrees(180));
+            } else if (rotationAngle === 270) {
+                p.pushOperators(PDFLib.translate(0, height));
+                p.pushOperators(PDFLib.rotateDegrees(270));
+            }
 
             p.drawRectangle({ x: rx, y: ry, width: rw, height: dynamicRh, color: rgb(1, 1, 1) });
 
@@ -463,6 +485,8 @@
                     size: remFontSize, font: fontBold, color: rgb(0, 0, 0)
                 });
             });
+
+            p.pushOperators(PDFLib.popGraphicsState());
 
             const b = await doc.save();
             const blob = new Blob([b], { type: 'application/pdf' });
